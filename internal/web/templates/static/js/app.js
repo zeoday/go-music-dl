@@ -1,8 +1,63 @@
 // templates/app.js
 
 const API_ROOT = window.API_ROOT;
+const WEB_SETTINGS_KEY = 'musicdl:web_settings';
+
+let webSettings = {
+    embedDownload: false
+};
+
+function loadWebSettings() {
+    try {
+        const raw = localStorage.getItem(WEB_SETTINGS_KEY);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed.embedDownload === 'boolean') {
+            webSettings.embedDownload = parsed.embedDownload;
+        }
+    } catch (_) {
+    }
+}
+
+function saveWebSettings() {
+    try {
+        localStorage.setItem(WEB_SETTINGS_KEY, JSON.stringify(webSettings));
+    } catch (_) {
+    }
+}
+
+function buildDownloadURL(id, source, name, artist, cover) {
+    const params = new URLSearchParams({
+        id: String(id || ''),
+        source: String(source || ''),
+        name: String(name || ''),
+        artist: String(artist || '')
+    });
+
+    const coverValue = String(cover || '');
+    if (coverValue !== '') {
+        params.set('cover', coverValue);
+    }
+    if (webSettings.embedDownload) {
+        params.set('embed', '1');
+    }
+
+    return `${API_ROOT}/download?${params.toString()}`;
+}
+
+function refreshDownloadLinks() {
+    document.querySelectorAll('.song-card').forEach(card => {
+        const dl = card.querySelector('.btn-download');
+        if (!dl) return;
+
+        const ds = card.dataset;
+        dl.href = buildDownloadURL(ds.id, ds.source, ds.name, ds.artist, ds.cover || '');
+    });
+}
 
 document.addEventListener('DOMContentLoaded', function() {
+    loadWebSettings();
+
     const checkboxes = document.querySelectorAll('.source-checkbox');
     
     const btnAll = document.getElementById('btn-all');
@@ -51,6 +106,13 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         };
     });
+
+    const embedToggle = document.getElementById('setting-embed-download');
+    if (embedToggle) {
+        embedToggle.checked = webSettings.embedDownload;
+    }
+
+    refreshDownloadLinks();
 
     syncAllPlayButtons();
 });
@@ -127,6 +189,10 @@ function inspectSong(card) {
 
 function openCookieModal() {
     document.getElementById('cookieModal').style.display = 'flex';
+    const embedToggle = document.getElementById('setting-embed-download');
+    if (embedToggle) {
+        embedToggle.checked = webSettings.embedDownload;
+    }
     fetch(API_ROOT + '/cookies').then(r => r.json()).then(data => {
         for (const [k, v] of Object.entries(data)) {
             const el = document.getElementById(`cookie-${k}`);
@@ -136,6 +202,11 @@ function openCookieModal() {
 }
 
 function saveCookies() {
+    const embedToggle = document.getElementById('setting-embed-download');
+    webSettings.embedDownload = !!(embedToggle && embedToggle.checked);
+    saveWebSettings();
+    refreshDownloadLinks();
+
     const data = {};
     document.querySelectorAll('input[id^="cookie-"]').forEach(input => {
         data[input.id.replace('cookie-', '')] = input.value;
@@ -365,7 +436,7 @@ function updateCardWithSong(card, song) {
 
     const dl = card.querySelector('.btn-download');
     if (dl) {
-        dl.href = `${API_ROOT}/download?id=${encodeURIComponent(song.id)}&source=${song.source}&name=${encodeURIComponent(song.name)}&artist=${encodeURIComponent(song.artist)}&cover=${encodeURIComponent(song.cover || '')}&embed=1`;
+        dl.href = buildDownloadURL(song.id, song.source, song.name, song.artist, song.cover || '');
         dl.id = `dl-${song.id}`;
     }
 
@@ -613,7 +684,7 @@ function getSelectedSongs() {
                 source: ds.source,
                 name: ds.name,
                 artist: ds.artist,
-                url: `${API_ROOT}/download?id=${encodeURIComponent(ds.id)}&source=${ds.source}&name=${encodeURIComponent(ds.name)}&artist=${encodeURIComponent(ds.artist)}&cover=${encodeURIComponent(ds.cover || '')}&embed=1`,
+                url: buildDownloadURL(ds.id, ds.source, ds.name, ds.artist, ds.cover || ''),
                 cover: coverUrl,
                 lrc: `${API_ROOT}/lyric?id=${encodeURIComponent(ds.id)}&source=${ds.source}`,
                 theme: '#10b981',

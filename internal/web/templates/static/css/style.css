@@ -217,6 +217,68 @@ body.batch-mode .song-card { padding-left: 10px; }
 .cookie-item label { display: block; font-size: 12px; color: #718096; margin-bottom: 4px; font-weight: 600; }
 .cookie-item input { width: 100%; padding: 10px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; box-sizing: border-box; outline: none; }
 .cookie-item input:focus { border-color: #10b981; }
+.setting-item {
+    margin-top: 6px;
+    padding: 10px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #f8fafc;
+}
+.setting-toggle {
+    display: flex !important;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 0 !important;
+    color: var(--text-main) !important;
+    font-size: 13px !important;
+    cursor: pointer;
+}
+.setting-toggle input[type="checkbox"] {
+    position: absolute;
+    opacity: 0;
+    width: 1px;
+    height: 1px;
+    pointer-events: none;
+}
+.setting-switch {
+    width: 46px;
+    height: 28px;
+    border-radius: 999px;
+    background: #d1d5db;
+    position: relative;
+    flex-shrink: 0;
+    transition: background-color 0.2s ease;
+}
+.setting-switch::before {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+    transition: transform 0.2s ease;
+}
+.setting-toggle input[type="checkbox"]:checked + .setting-switch {
+    background: #34d399;
+}
+.setting-toggle input[type="checkbox"]:checked + .setting-switch::before {
+    transform: translateX(18px);
+}
+.setting-toggle input[type="checkbox"]:focus-visible + .setting-switch {
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.3);
+}
+.setting-toggle-text {
+    line-height: 1.4;
+}
+.setting-hint {
+    margin: 8px 0 0 26px;
+    color: #718096;
+    font-size: 12px;
+    line-height: 1.45;
+}
 .btn-save { width: 100%; padding: 12px; background: var(--primary-gradient); color: white; border: none; border-radius: 10px; font-weight: 600; cursor: pointer; margin-top: 10px; font-size: 15px;}
 
 .collection-item { display: flex; align-items: center; justify-content: space-between; padding: 10px; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 10px; transition: all 0.2s; background: #faf8f8; cursor: pointer;}
@@ -355,6 +417,28 @@ body.batch-mode .song-card { padding-left: 10px; }
     .btn-circle { width: 34px; height: 34px; font-size: 13px; }
     .settings-float { top: 15px; right: 15px; width: 36px; height: 36px; }
     .modal { width: 92%; max-height: 85vh; padding: 20px; }
+    .setting-item { padding: 10px; }
+    .setting-toggle {
+        gap: 8px;
+        align-items: flex-start;
+        font-size: 12px !important;
+    }
+    .setting-switch {
+        width: 44px;
+        height: 26px;
+    }
+    .setting-switch::before {
+        width: 20px;
+        height: 20px;
+    }
+    .setting-toggle input[type="checkbox"]:checked + .setting-switch::before {
+        transform: translateX(18px);
+    }
+    .setting-hint {
+        margin-left: 0;
+        margin-top: 8px;
+        font-size: 11px;
+    }
     
     /* 🌟 手机端防误触：变成悬浮胶囊形态并大幅上移，彻底避开手势区！ */
     .aplayer.aplayer-fixed {
