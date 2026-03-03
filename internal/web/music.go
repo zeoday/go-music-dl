@@ -2,6 +2,7 @@ package web
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -446,10 +447,14 @@ func RegisterMusicRoutes(api *gin.RouterGroup) {
 			contentType := core.AudioMimeByExt(ext)
 
 			finalData := audioData
-			if ext == "mp3" {
+			if (ext == "mp3" || ext == "flac" || ext == "m4a" || ext == "wma") && (lyric != "" || len(coverData) > 0) {
 				embeddedData, embedErr := core.EmbedSongMetadata(audioData, tempSong, lyric, coverData, coverMime)
 				if embedErr == nil {
 					finalData = embeddedData
+				} else if errors.Is(embedErr, core.ErrFFmpegNotFound) {
+					c.Header("X-MusicDL-Warning", "ffmpeg not found, metadata embedding skipped")
+				} else {
+					c.Header("X-MusicDL-Warning", "metadata embedding failed, using original audio")
 				}
 			}
 

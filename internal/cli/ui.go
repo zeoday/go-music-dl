@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -1143,9 +1144,13 @@ func downloadSongWithCookie(song *model.Song, outDir string, withCover bool, wit
 	// 5. 内嵌元数据到 ID3（如有数据）
 	ext := core.DetectAudioExt(finalData)
 
-	if ext == "mp3" && (lyricStr != "" || len(coverData) > 0) {
+	if (ext == "mp3" || ext == "flac" || ext == "m4a" || ext == "wma") && (lyricStr != "" || len(coverData) > 0) {
 		if embeddedData, err := core.EmbedSongMetadata(finalData, song, lyricStr, coverData, coverMime); err == nil {
 			finalData = embeddedData
+		} else if errors.Is(err, core.ErrFFmpegNotFound) {
+			fmt.Printf("⚠ 未检测到 ffmpeg，已跳过歌词/封面嵌入，仍会正常下载音频\n")
+		} else {
+			fmt.Printf("⚠ 音频元数据嵌入失败，已使用原始音频继续保存: %v\n", err)
 		}
 	}
 

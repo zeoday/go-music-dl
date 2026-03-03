@@ -3,18 +3,20 @@ package core
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
 	"time"
 	"unicode"
 
-	"github.com/bogem/id3v2"
+	"github.com/dhowden/tag"
 	"github.com/guohuiyuan/music-lib/bilibili"
 	"github.com/guohuiyuan/music-lib/fivesing"
 	"github.com/guohuiyuan/music-lib/jamendo"
@@ -28,6 +30,8 @@ import (
 	"github.com/guohuiyuan/music-lib/qq"
 	"github.com/guohuiyuan/music-lib/soda"
 )
+
+var ErrFFmpegNotFound = errors.New("ffmpeg not found")
 
 const (
 	UA_Common    = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
@@ -437,6 +441,9 @@ func FormatSize(s int64) string {
 }
 
 func DetectAudioExt(data []byte) string {
+	if len(data) >= 16 && bytes.Equal(data[:16], []byte{0x30, 0x26, 0xB2, 0x75, 0x8E, 0x66, 0xCF, 0x11, 0xA6, 0xD9, 0x00, 0xAA, 0x00, 0x62, 0xCE, 0x6C}) {
+		return "wma"
+	}
 	if len(data) >= 4 && bytes.Equal(data[:4], []byte{'f', 'L', 'a', 'C'}) {
 		return "flac"
 	}
@@ -464,6 +471,8 @@ func DetectAudioExtByContentType(contentType string) string {
 	switch contentType {
 	case "audio/flac", "audio/x-flac":
 		return "flac"
+	case "audio/x-ms-wma", "audio/wma", "video/x-ms-asf", "application/vnd.ms-asf":
+		return "wma"
 	case "audio/mpeg", "audio/mp3", "audio/x-mp3":
 		return "mp3"
 	case "audio/ogg", "application/ogg":
@@ -477,6 +486,8 @@ func DetectAudioExtByContentType(contentType string) string {
 
 func AudioMimeByExt(ext string) string {
 	switch strings.ToLower(strings.TrimSpace(ext)) {
+	case "wma":
+		return "audio/x-ms-wma"
 	case "flac":
 		return "audio/flac"
 	case "ogg":
@@ -731,47 +742,127 @@ func FetchBytesWithMime(urlStr string, source string) ([]byte, string, error) {
 }
 
 func EmbedSongMetadata(audioData []byte, song *model.Song, lyric string, coverData []byte, coverMime string) ([]byte, error) {
-	body := stripID3v2Prefix(audioData)
-
-	tag, err := id3v2.ParseReader(bytes.NewReader(audioData), id3v2.Options{Parse: true})
-	if err != nil {
-		tag = id3v2.NewEmptyTag()
-		tag.SetVersion(4)
+	if len(audioData) == 0 {
+		return nil, errors.New("empty audio data")
 	}
-	defer tag.Close()
 
-	tag.SetDefaultEncoding(id3v2.EncodingUTF8)
-	tag.SetTitle(strings.TrimSpace(song.Name))
-	tag.SetArtist(strings.TrimSpace(song.Artist))
+	ext := DetectAudioExt(audioData)
+	if song != nil && song.Ext != "" {
+		songExt := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(song.Ext, ".")))
+		switch songExt {
+		case "mp3", "flac", "m4a", "wma":
+			ext = songExt
+		}
+	}
 
+	title := ""
+	artist := ""
+	if song != nil {
+		title = strings.TrimSpace(song.Name)
+		artist = strings.TrimSpace(song.Artist)
+	}
 	lyric = strings.TrimSpace(lyric)
-	if lyric != "" {
-		lyricID := tag.CommonID("Unsynchronised lyrics/text transcription")
-		tag.DeleteFrames(lyricID)
-		tag.AddUnsynchronisedLyricsFrame(id3v2.UnsynchronisedLyricsFrame{
-			Encoding:          id3v2.EncodingUTF8,
-			Language:          "chi",
-			ContentDescriptor: "歌词",
-			Lyrics:            lyric,
-		})
+
+	if ext != "mp3" && ext != "flac" && ext != "m4a" && ext != "wma" {
+		return audioData, nil
+	}
+	if title == "" && artist == "" && lyric == "" && len(coverData) == 0 {
+		return audioData, nil
 	}
 
-	if len(coverData) > 0 {
-		coverID := tag.CommonID("Attached picture")
-		tag.DeleteFrames(coverID)
-		tag.AddAttachedPicture(id3v2.PictureFrame{
-			Encoding:    id3v2.EncodingUTF8,
-			MimeType:    normalizeCoverMime(coverMime),
-			PictureType: id3v2.PTFrontCover,
-			Description: "Cover",
-			Picture:     coverData,
-		})
+	_, _ = tag.ReadFrom(bytes.NewReader(audioData))
+
+	return embedAudioMetadataByFFmpeg(audioData, ext, title, artist, lyric, coverData, normalizeCoverMime(coverMime))
+}
+
+func embedAudioMetadataByFFmpeg(audioData []byte, ext, title, artist, lyric string, coverData []byte, coverMime string) ([]byte, error) {
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		return nil, ErrFFmpegNotFound
 	}
 
-	var out bytes.Buffer
-	if _, err = tag.WriteTo(&out); err != nil {
+	inFile, err := os.CreateTemp("", "gomusicdl-in-*"+"."+ext)
+	if err != nil {
 		return nil, err
 	}
+	inPath := inFile.Name()
+	defer os.Remove(inPath)
+	if _, err := inFile.Write(audioData); err != nil {
+		inFile.Close()
+		return nil, err
+	}
+	inFile.Close()
 
-	return append(out.Bytes(), body...), nil
+	outFile, err := os.CreateTemp("", "gomusicdl-out-*"+"."+ext)
+	if err != nil {
+		return nil, err
+	}
+	outPath := outFile.Name()
+	outFile.Close()
+	defer os.Remove(outPath)
+
+	args := []string{"-y", "-hide_banner", "-loglevel", "error", "-i", inPath}
+
+	hasCover := len(coverData) > 0
+	coverPath := ""
+	if hasCover {
+		coverExt := ".jpg"
+		if strings.Contains(coverMime, "png") {
+			coverExt = ".png"
+		}
+		coverFile, err := os.CreateTemp("", "gomusicdl-cover-*"+coverExt)
+		if err != nil {
+			return nil, err
+		}
+		coverPath = coverFile.Name()
+		defer os.Remove(coverPath)
+		if _, err := coverFile.Write(coverData); err != nil {
+			coverFile.Close()
+			return nil, err
+		}
+		coverFile.Close()
+		args = append(args, "-i", coverPath)
+	}
+
+	if hasCover {
+		args = append(args, "-map", "0:a:0", "-map", "1:v:0")
+	} else {
+		args = append(args, "-map", "0:a:0")
+	}
+
+	args = append(args, "-c:a", "copy")
+	if hasCover {
+		args = append(args, "-c:v", "copy", "-disposition:v:0", "attached_pic", "-metadata:s:v:0", "title=Album cover", "-metadata:s:v:0", "comment=Cover (front)")
+	}
+
+	if title != "" {
+		args = append(args, "-metadata", "title="+title)
+	}
+	if artist != "" {
+		args = append(args, "-metadata", "artist="+artist)
+	}
+	if lyric != "" {
+		args = append(args, "-metadata", "lyrics="+lyric)
+	}
+
+	if ext == "mp3" {
+		args = append(args, "-id3v2_version", "3", "-write_id3v1", "1")
+	}
+
+	args = append(args, outPath)
+
+	cmd := exec.Command("ffmpeg", args...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("ffmpeg metadata embed failed: %v, output: %s", err, strings.TrimSpace(string(out)))
+	}
+
+	finalData, err := os.ReadFile(filepath.Clean(outPath))
+	if err != nil {
+		return nil, err
+	}
+	if len(finalData) == 0 {
+		return nil, errors.New("embedded output is empty")
+	}
+
+	return finalData, nil
 }
