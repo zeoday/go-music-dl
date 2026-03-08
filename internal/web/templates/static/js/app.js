@@ -2,6 +2,7 @@
 
 const API_ROOT = window.API_ROOT;
 const WEB_SETTINGS_KEY = 'musicdl:web_settings';
+const INSPECT_REQUEST_DELAY_MS = 100;
 
 let webSettings = {
     embedDownload: false
@@ -80,7 +81,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     const cards = document.querySelectorAll('.song-card');
     cards.forEach((card, index) => {
-        setTimeout(() => inspectSong(card), index * 100);
+        queueInspectSong(card, index * INSPECT_REQUEST_DELAY_MS);
     });
 
     cards.forEach(card => {
@@ -199,6 +200,10 @@ function inspectSong(card) {
             const el = document.getElementById(`size-${id}`);
             if(el) el.textContent = "检测失败";
         });
+}
+
+function queueInspectSong(card, delay = INSPECT_REQUEST_DELAY_MS) {
+    window.setTimeout(() => inspectSong(card), delay);
 }
 
 function openCookieModal() {
@@ -485,7 +490,7 @@ function updateCardWithSong(card, song) {
         currentPlayingId = song.id;
     }
     syncAllPlayButtons();
-    inspectSong(card);
+    queueInspectSong(card);
     syncSongToAPlayer(oldId, song);
 }
 
