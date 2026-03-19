@@ -94,17 +94,23 @@ ffmpeg -version
 * 🖼️ 自定义窗口图标
 * 🔒 使用罕见端口(37777)，避免端口冲突
 
-### Docker 部署 (零配置)
+### Docker 部署
 
-本项目提供了多种 Docker 部署方式，已全面升级为 **Docker 命名卷 (Named Volumes)** 管理数据，彻底告别权限报错和手动建文件夹的烦恼，实现真正的零配置一键启动。
+本项目提供了多种 Docker 部署方式。当前默认通过 `./data` 目录挂载到容器内 `/home/appuser/data`，下载文件、配置与收藏数据都会持久化到该目录。
 
 #### 1. 生产环境部署（推荐）
 
 项目包含 `docker-compose.yml` 文件，直接拉取云端预编译镜像，无需在本地构建：
 
 ```bash
+# 拉取最新镜像
+docker compose pull
+
 # 后台启动服务
-docker compose up -d
+docker compose up -d --remove-orphans
+
+# 或一条命令拉取并启动
+docker compose up -d --pull always --remove-orphans
 
 # 查看日志
 docker compose logs -f
@@ -120,7 +126,7 @@ docker compose down
 
 * 自动拉取 `guohuiyuan/go-music-dl:latest` 镜像
 * 支持后台运行和自动重启
-* **真·零配置**：自动创建 Docker 命名卷来持久化 `downloads` (下载目录)、`cookies.json` (配置) 和 `favorites.db` (收藏夹数据)，无需手动干预
+* 默认使用 `./data` 本地目录做数据持久化，便于直接查看和备份
 * 设置时区为亚洲上海
 * 以非root用户(uid=1000)运行，提高安全性
 
@@ -130,28 +136,30 @@ docker compose down
 
 ```bash
 # 强制在本地使用 Dockerfile 进行构建并启动
-docker compose -f docker-compose.dev.yml up -d --build
+docker compose -f docker-compose.dev.yml up -d --build --remove-orphans
 
 ```
 
 #### 3. 纯命令行模式 (docker run)
 
-如果不使用 Compose，也可以直接通过命令行运行（同样使用命名卷保证零配置和数据持久化）：
+如果不使用 Compose，也可以直接通过命令行运行：
 
 ```bash
 docker run -d --name music-dl \
   -p 8080:8080 \
-  -v music_data_downloads:/home/appuser/downloads \
-  -v music_data_cookies:/home/appuser/cookies.json \
-  -v music_data_favorites:/home/appuser/favorites.db \
+  -v $(pwd)/data:/home/appuser/data \
   -e TZ=Asia/Shanghai \
   --user 1000:1000 \
   --restart unless-stopped \
-  guohuiyuan/go-music-dl:latest
+  guohuiyuan/go-music-dl:latest \
+  ./music-dl web --port 8080 --no-browser --vg-cover --vg-audio --vg-lyric --vg-export
+
+# Windows PowerShell
+docker run -d --name music-dl -p 8080:8080 -v ${PWD}/data:/home/appuser/data -e TZ=Asia/Shanghai --user 1000:1000 --restart unless-stopped guohuiyuan/go-music-dl:latest ./music-dl web --port 8080 --no-browser --vg-cover --vg-audio --vg-lyric --vg-export
 
 ```
 
-*提示：使用命名卷后，下载的歌曲文件保存在 Docker 的虚拟卷中。如果需要导出音乐文件，可以通过网页端的“批量下载”功能直接保存到本地。*
+*提示：首次运行前可先创建 `data` 目录（如 `mkdir -p data`），便于宿主机直接访问下载与配置数据。*
 
 ### CLI/TUI 模式
 
