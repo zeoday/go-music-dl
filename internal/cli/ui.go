@@ -155,7 +155,7 @@ func defaultSourcesForSearchType(searchType string) []string {
 	case searchTypePlaylist:
 		return core.GetPlaylistSourceNames()
 	case searchTypeAlbum:
-		return []string{"netease", "qq", "kugou", "kuwo"}
+		return core.GetAlbumSourceNames()
 	default:
 		return core.GetDefaultSourceNames()
 	}
@@ -314,6 +314,16 @@ func getAlbumSearchFunc(source string) func(string) ([]model.Playlist, error) {
 		return kugou.New(c).SearchAlbum
 	case "kuwo":
 		return kuwo.New(c).SearchAlbum
+	case "migu":
+		return migu.New(c).SearchAlbum
+	case "jamendo":
+		return jamendo.New(c).SearchAlbum
+	case "joox":
+		return joox.New(c).SearchAlbum
+	case "qianqian":
+		return qianqian.New(c).SearchAlbum
+	case "soda":
+		return soda.New(c).SearchAlbum
 	default:
 		return nil
 	}
@@ -353,6 +363,16 @@ func getAlbumDetailFunc(source string) func(string) ([]model.Song, error) {
 		return kugou.New(c).GetAlbumSongs
 	case "kuwo":
 		return kuwo.New(c).GetAlbumSongs
+	case "migu":
+		return migu.New(c).GetAlbumSongs
+	case "jamendo":
+		return jamendo.New(c).GetAlbumSongs
+	case "joox":
+		return joox.New(c).GetAlbumSongs
+	case "qianqian":
+		return qianqian.New(c).GetAlbumSongs
+	case "soda":
+		return soda.New(c).GetAlbumSongs
 	default:
 		return nil
 	}
@@ -409,6 +429,16 @@ func getParseAlbumFunc(source string) func(string) (*model.Playlist, []model.Son
 		return kugou.New(c).ParseAlbum
 	case "kuwo":
 		return kuwo.New(c).ParseAlbum
+	case "migu":
+		return migu.New(c).ParseAlbum
+	case "jamendo":
+		return jamendo.New(c).ParseAlbum
+	case "joox":
+		return joox.New(c).ParseAlbum
+	case "qianqian":
+		return qianqian.New(c).ParseAlbum
+	case "soda":
+		return soda.New(c).ParseAlbum
 	default:
 		return nil
 	}
@@ -431,11 +461,17 @@ func detectSource(link string) string {
 	if strings.Contains(link, "migu.cn") {
 		return "migu"
 	}
+	if strings.Contains(link, "joox.com") {
+		return "joox"
+	}
 	if strings.Contains(link, "bilibili.com") || strings.Contains(link, "b23.tv") {
 		return "bilibili"
 	}
 	if strings.Contains(link, "douyin.com") || strings.Contains(link, "qishui") {
 		return "soda"
+	}
+	if strings.Contains(link, "91q.com") {
+		return "qianqian"
 	}
 	if strings.Contains(link, "5sing") {
 		return "fivesing"

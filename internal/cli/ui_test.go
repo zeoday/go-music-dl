@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/guohuiyuan/go-music-dl/core"
 )
 
 func TestNextSearchTypeCyclesAllModes(t *testing.T) {
@@ -39,7 +41,7 @@ func TestPlaceholderForSearchType(t *testing.T) {
 }
 
 func TestDefaultSourcesForSearchType(t *testing.T) {
-	wantAlbumSources := []string{"netease", "qq", "kugou", "kuwo"}
+	wantAlbumSources := core.GetAlbumSourceNames()
 	if got := defaultSourcesForSearchType(searchTypeAlbum); !reflect.DeepEqual(got, wantAlbumSources) {
 		t.Fatalf("defaultSourcesForSearchType(album) = %v, want %v", got, wantAlbumSources)
 	}
@@ -54,7 +56,7 @@ func TestDefaultSourcesForSearchType(t *testing.T) {
 }
 
 func TestAlbumFunctionsAreWiredForSupportedSources(t *testing.T) {
-	supported := []string{"netease", "qq", "kugou", "kuwo"}
+	supported := core.GetAlbumSourceNames()
 	for _, source := range supported {
 		if fn := getAlbumSearchFunc(source); fn == nil {
 			t.Fatalf("getAlbumSearchFunc(%q) returned nil", source)
@@ -65,9 +67,5 @@ func TestAlbumFunctionsAreWiredForSupportedSources(t *testing.T) {
 		if fn := getParseAlbumFunc(source); fn == nil {
 			t.Fatalf("getParseAlbumFunc(%q) returned nil", source)
 		}
-	}
-
-	if fn := getAlbumSearchFunc("migu"); fn != nil {
-		t.Fatal("getAlbumSearchFunc(migu) should be nil")
 	}
 }
