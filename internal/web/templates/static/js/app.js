@@ -791,6 +791,8 @@ function scrollToTop() {
 }
 
 let defaultDocumentTitle = document.title;
+let mediaSessionSyncTimer = 0;
+let mediaSessionSyncVersion = 0;
 
 function mediaSessionControllerSupported() {
     return typeof navigator !== 'undefined' && !!navigator.mediaSession;
@@ -807,15 +809,103 @@ function getCurrentAPlayerAudio() {
     return ap.list.audios[index] || null;
 }
 
-function buildMediaSessionArtwork(coverUrl) {
-    const src = String(coverUrl || '').trim();
-    if (!src) return [];
+function normalizeMediaSessionURL(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
 
     try {
-        return [{ src: new URL(src, window.location.href).toString() }];
+        return new URL(raw, window.location.href).toString();
     } catch (_) {
-        return [{ src }];
+        return raw;
     }
+}
+
+function extractURLFromBackgroundImage(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+
+    const match = raw.match(/^url\((['"]?)(.*)\1\)$/i);
+    if (!match || !match[2]) return '';
+    return match[2].trim();
+}
+
+function buildMediaSessionCoverURL(audio = getCurrentAPlayerAudio()) {
+    const candidates = [];
+
+    if (audio) {
+        candidates.push({
+            url: audio.cover,
+            source: audio.source || ''
+        });
+    }
+
+    const currentId = String(audio?.custom_id || '').trim();
+    if (currentId) {
+        const card = Array.from(document.querySelectorAll('.song-card')).find(item => item?.dataset?.id === currentId);
+        if (card) {
+            const imgEl = card.querySelector('.cover-wrapper img');
+            if (imgEl && imgEl.src) {
+                candidates.unshift({
+                    url: imgEl.src,
+                    source: card.dataset.source || audio?.source || ''
+                });
+            }
+
+            if (card.dataset.cover) {
+                candidates.push({
+                    url: card.dataset.cover,
+                    source: card.dataset.source || audio?.source || ''
+                });
+            }
+        }
+    }
+
+    const apPic = document.querySelector('.aplayer-pic');
+    if (apPic?.style?.backgroundImage) {
+        const playerCover = extractURLFromBackgroundImage(apPic.style.backgroundImage);
+        if (playerCover) {
+            candidates.unshift({
+                url: playerCover,
+                source: audio?.source || ''
+            });
+        }
+    }
+
+    for (const candidate of candidates) {
+        const normalized = normalizeMediaSessionURL(candidate?.url);
+        if (!normalized) continue;
+
+        const lowered = normalized.toLowerCase();
+        if (lowered.startsWith('data:') || lowered.startsWith('blob:')) {
+            return normalized;
+        }
+
+        try {
+            const parsed = new URL(normalized, window.location.href);
+            if (parsed.origin === window.location.origin && parsed.pathname === `${API_ROOT}/cover_proxy`) {
+                return parsed.toString();
+            }
+
+            const proxy = new URL(`${API_ROOT}/cover_proxy`, window.location.href);
+            proxy.searchParams.set('url', parsed.toString());
+            const sourceValue = String(candidate?.source || '').trim();
+            if (sourceValue) {
+                proxy.searchParams.set('source', sourceValue);
+            }
+            return proxy.toString();
+        } catch (_) {
+            return normalized;
+        }
+    }
+
+    return '';
+}
+
+function buildMediaSessionArtwork(audio = getCurrentAPlayerAudio()) {
+    const src = buildMediaSessionCoverURL(audio);
+    if (!src) return [];
+
+    return [{ src }];
 }
 
 function updateDocumentTitleForMedia(audio) {
@@ -856,7 +946,7 @@ function updateMediaSessionMetadata(audio = getCurrentAPlayerAudio()) {
         metadata.album = audio.album;
     }
 
-    const artwork = buildMediaSessionArtwork(audio.cover);
+    const artwork = buildMediaSessionArtwork(audio);
     if (artwork.length > 0) {
         metadata.artwork = artwork;
     }
@@ -905,8 +995,35 @@ function syncMediaSession(audio = getCurrentAPlayerAudio()) {
     updateMediaSessionPositionState();
 }
 
+function scheduleMediaSessionSync(audio = getCurrentAPlayerAudio(), delayMs = 160) {
+    if (!mediaSessionControllerSupported()) return;
+
+    const expectedId = String(audio?.custom_id || '').trim();
+    const syncVersion = ++mediaSessionSyncVersion;
+
+    if (mediaSessionSyncTimer) {
+        clearTimeout(mediaSessionSyncTimer);
+    }
+
+    mediaSessionSyncTimer = setTimeout(() => {
+        if (syncVersion !== mediaSessionSyncVersion) return;
+
+        const currentAudio = getCurrentAPlayerAudio();
+        if (expectedId && currentAudio && String(currentAudio.custom_id || '').trim() !== expectedId) {
+            return;
+        }
+
+        syncMediaSession(currentAudio || audio);
+    }, Math.max(0, Number(delayMs) || 0));
+}
+
 function clearMediaSession() {
     if (!mediaSessionControllerSupported()) return;
+    mediaSessionSyncVersion++;
+    if (mediaSessionSyncTimer) {
+        clearTimeout(mediaSessionSyncTimer);
+        mediaSessionSyncTimer = 0;
+    }
     if (mediaSessionMetadataSupported()) {
         navigator.mediaSession.metadata = null;
     }
@@ -973,6 +1090,10 @@ function bindMediaSessionAudioEvents() {
     });
     ['play', 'pause'].forEach((eventName) => {
         ap.audio.addEventListener(eventName, syncState);
+    });
+    ap.audio.addEventListener('loadedmetadata', () => {
+        syncMediaSession();
+        scheduleMediaSessionSync(getCurrentAPlayerAudio(), 180);
     });
 }
 
@@ -1088,6 +1209,7 @@ ap.on('listswitch', (e) => {
         }
     }
     syncMediaSession(newAudio || getCurrentAPlayerAudio());
+    scheduleMediaSessionSync(newAudio || getCurrentAPlayerAudio(), 180);
 });
 
 ap.on('play', () => {
@@ -1100,6 +1222,7 @@ ap.on('play', () => {
     }
     syncAllPlayButtons();
     syncMediaSession(audio || getCurrentAPlayerAudio());
+    scheduleMediaSessionSync(audio || getCurrentAPlayerAudio(), 180);
     
     if (window.VideoGen && window.VideoGen.updatePlayBtnState) {
         window.VideoGen.updatePlayBtnState(true);
@@ -1119,7 +1242,7 @@ ap.on('ended', () => {
     window.currentPlayingId = null; 
     highlightCard(null);
     syncAllPlayButtons();
-    clearMediaSession();
+    scheduleMediaSessionSync(getCurrentAPlayerAudio(), 180);
 });
 
 function highlightCard(targetId) {

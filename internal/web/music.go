@@ -637,6 +637,26 @@ func RegisterMusicRoutes(api *gin.RouterGroup) {
 		}
 	})
 
+	api.GET("/cover_proxy", func(c *gin.Context) {
+		u := strings.TrimSpace(c.Query("url"))
+		if u == "" {
+			c.Status(http.StatusBadRequest)
+			return
+		}
+
+		data, contentType, err := core.FetchBytesWithMime(u, strings.TrimSpace(c.Query("source")))
+		if err != nil || len(data) == 0 {
+			c.Status(http.StatusBadGateway)
+			return
+		}
+		if contentType == "" {
+			contentType = "image/jpeg"
+		}
+
+		c.Header("Cache-Control", "public, max-age=21600")
+		c.Data(http.StatusOK, contentType, data)
+	})
+
 	api.GET("/lyric", func(c *gin.Context) {
 		id := c.Query("id")
 		src := c.Query("source")
