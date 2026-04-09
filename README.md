@@ -170,7 +170,7 @@ docker run -d --name music-dl -p 8080:8080 -v ${PWD}/data:/home/appuser/data -e 
 
 ```
 
-*提示：首次运行前可先创建 `data` 目录（如 `mkdir -p data`），便于宿主机直接访问下载与配置数据。*
+*提示：首次运行前可先创建 `data` 目录（如 `mkdir -p data && chmod 777 data`），便于宿主机直接访问下载与配置数据。*
 
 ### CLI/TUI 模式
 
